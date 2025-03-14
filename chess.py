@@ -9,21 +9,71 @@ WIDTH = BOARD_SIZE * SQUARE_SIZE
 HEIGHT = BOARD_SIZE * SQUARE_SIZE
 
 # Couleurs
-WHITE = (240, 240, 240)
-BLACK = (50, 50, 50)
+WHITE_COLOR = (240, 240, 240)
+BLACK_COLOR = (50, 50, 50)
 LIGHT_BROWN = (222, 184, 135)
 DARK_BROWN = (139, 69, 19)
 BLUE = (50, 50, 255)
 GREEN = (0, 200, 0)
 RED = (200, 0, 0)
 
+class Explosion:
+    # Deux images d'explosion (chargées une seule fois)
+    explosion_img_default = None  # Pour les explosions par défaut
+    explosion_img_alternative = None  # Pour l'alternative (explosion2.png)
+
+    def __init__(self, x, y, use_alternative=False):
+        self.use_alternative = use_alternative
+        if use_alternative:
+            if Explosion.explosion_img_alternative is None:
+                try:
+                    loaded_img = pygame.image.load("explosion2.png").convert_alpha()
+                    # Réduire l'image à 50% de sa taille d'origine par exemple
+                    new_width = loaded_img.get_width() // 6
+                    new_height = loaded_img.get_height() // 6
+                    Explosion.explosion_img_alternative = pygame.transform.scale(loaded_img, (new_width, new_height))
+                except pygame.error:
+                    print("Erreur : Impossible de charger 'explosion2.png'.")
+                    sys.exit()
+        else:
+            if Explosion.explosion_img_default is None:
+                try:
+                    loaded_img = pygame.image.load("explosion.png").convert_alpha()
+                    new_width = loaded_img.get_width() // 6
+                    new_height = loaded_img.get_height() // 6
+                    Explosion.explosion_img_default = pygame.transform.scale(loaded_img, (new_width, new_height))
+                except pygame.error:
+                    print("Erreur : Impossible de charger 'explosion.png'.")
+                    sys.exit()
+        self.x = x
+        self.y = y
+        self.duration = 30  # Nombre de frames de l'animation
+        self.current_frame = 0
+
+    def update(self):
+        self.current_frame += 1
+
+    def draw(self, screen):
+        # L'explosion s'agrandit jusqu'à 130% de la taille de base
+        max_scale_factor = 1.6
+        scale_factor = 1 + (self.current_frame / self.duration) * (max_scale_factor - 1)
+        if self.use_alternative:
+            base_img = Explosion.explosion_img_alternative
+        else:
+            base_img = Explosion.explosion_img_default
+        new_width = int(base_img.get_width() * scale_factor)
+        new_height = int(base_img.get_height() * scale_factor)
+        explosion_surface = pygame.transform.scale(base_img, (new_width, new_height))
+        rect = explosion_surface.get_rect(center=(self.x, self.y))
+        screen.blit(explosion_surface, rect)
+
 def init_board():
     board = [[None for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)]
-    # Les noirs occupent les deux premières rangées (0 et 1)
+    # Positionnement initial des pions noirs (rangées 0 et 1)
     for row in range(2):
         for col in range(BOARD_SIZE):
             board[row][col] = "B"
-    # Les blancs occupent les deux dernières rangées (6 et 7)
+    # Positionnement initial des pions blancs (rangées 6 et 7)
     for row in range(BOARD_SIZE-2, BOARD_SIZE):
         for col in range(BOARD_SIZE):
             board[row][col] = "W"
@@ -32,10 +82,9 @@ def init_board():
 def get_valid_moves(board, row, col):
     """
     Calcule les coups valides pour un pion situé en (row, col).
-    Le pion avance d’une case vers l’avant.
-    - Le déplacement en avant est autorisé si la case est vide.
-    - Les déplacements en diagonale (gauche et droite) sont autorisés s'ils mènent sur une case vide
-      ou si celle-ci contient un pion adverse.
+    Le pion avance d'une case vers l'avant.
+    Les déplacements en diagonale (gauche et droite) sont autorisés
+    s'ils mènent sur une case vide ou sur une case occupée par un pion adverse.
     """
     moves = []
     piece = board[row][col]
@@ -45,47 +94,39 @@ def get_valid_moves(board, row, col):
     direction = -1 if piece == "W" else 1
     new_row = row + direction
     if 0 <= new_row < BOARD_SIZE:
-        # Déplacement en avant (seulement si la case est vide)
+        # Déplacement en avant
         if board[new_row][col] is None:
             moves.append((new_row, col))
-        # Déplacement en diagonale gauche
+        # Diagonale gauche
         new_col = col - 1
         if new_col >= 0:
             if board[new_row][new_col] is None or board[new_row][new_col] != piece:
                 moves.append((new_row, new_col))
-        # Déplacement en diagonale droite
+        # Diagonale droite
         new_col = col + 1
         if new_col < BOARD_SIZE:
             if board[new_row][new_col] is None or board[new_row][new_col] != piece:
                 moves.append((new_row, new_col))
     return moves
 
-def draw_board(screen, board, selected, valid_moves):
+def draw_board(screen, board, selected, valid_moves, white_img, black_img):
     for row in range(BOARD_SIZE):
         for col in range(BOARD_SIZE):
-            # Alternance des couleurs pour les cases
             color = LIGHT_BROWN if (row + col) % 2 == 0 else DARK_BROWN
             rect = pygame.Rect(col * SQUARE_SIZE, row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE)
             pygame.draw.rect(screen, color, rect)
 
-            # Met en surbrillance la case sélectionnée
             if selected == (row, col):
                 pygame.draw.rect(screen, BLUE, rect, 4)
-            # Met en évidence les coups possibles
             if (row, col) in valid_moves:
                 pygame.draw.rect(screen, GREEN, rect, 4)
 
-            # Dessine le pion s'il existe
             piece = board[row][col]
             if piece is not None:
-                center = (col * SQUARE_SIZE + SQUARE_SIZE // 2, row * SQUARE_SIZE + SQUARE_SIZE // 2)
-                radius = SQUARE_SIZE // 2 - 10
-                if piece == "W":
-                    pygame.draw.circle(screen, WHITE, center, radius)
-                    pygame.draw.circle(screen, BLACK, center, radius, 2)
-                else:
-                    pygame.draw.circle(screen, BLACK, center, radius)
-                    pygame.draw.circle(screen, WHITE, center, radius, 2)
+                pawn_img = white_img if piece == "W" else black_img
+                pawn_rect = pawn_img.get_rect(center=(col * SQUARE_SIZE + SQUARE_SIZE // 2,
+                                                        row * SQUARE_SIZE + SQUARE_SIZE // 2))
+                screen.blit(pawn_img, pawn_rect)
 
 def check_win(board):
     """
@@ -126,15 +167,35 @@ def ai_move(board, player):
 def main():
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
-    pygame.display.set_caption("Breakthrough")
+    pygame.display.set_caption("Breakthrough avec explosions différenciées")
     clock = pygame.time.Clock()
 
     board = init_board()
-    current_player = "W"  # Joueur humain : blanc, IA : noir
+    current_player = "W"  # Joueur humain (blanc) vs IA (noir)
     selected = None
     valid_moves = []
     game_over = False
     winner = None
+
+    # Charger et redimensionner les images des pions
+    try:
+        white_pawn_img = pygame.image.load("white_pawn.png").convert_alpha()
+        black_pawn_img = pygame.image.load("black_pawn.png").convert_alpha()
+    except pygame.error:
+        print("Erreur : Impossible de charger 'white_pawn.png' ou 'black_pawn.png'.")
+        sys.exit()
+    target_size = (SQUARE_SIZE - 20, SQUARE_SIZE - 20)
+    white_pawn_img = pygame.transform.scale(white_pawn_img, target_size)
+    black_pawn_img = pygame.transform.scale(black_pawn_img, target_size)
+
+    # Variables pour gérer les explosions animées
+    explosions = []
+    # Pour la cascade d'explosions en fin de partie
+    cascade_started = False
+    explosion_delay = 30  # Nombre de frames entre chaque explosion
+    explosion_cascade_timer = explosion_delay
+    cascade_list = []
+    cascade_explosion_alternative = False  # Définira le type d'explosion à utiliser dans la cascade
 
     font = pygame.font.SysFont(None, 48)
 
@@ -144,7 +205,7 @@ def main():
                 pygame.quit()
                 sys.exit()
 
-            # Tour du joueur humain
+            # Tour du joueur humain (blanc)
             if current_player == "W" and not game_over and event.type == pygame.MOUSEBUTTONDOWN:
                 mouse_x, mouse_y = pygame.mouse.get_pos()
                 col = mouse_x // SQUARE_SIZE
@@ -157,17 +218,21 @@ def main():
                 else:
                     if (row, col) in valid_moves:
                         src_row, src_col = selected
+                        # Si capture (blanc capture noir) : on utilise l'explosion par défaut
+                        if board[row][col] is not None:
+                            explosion_x = col * SQUARE_SIZE + SQUARE_SIZE // 2
+                            explosion_y = row * SQUARE_SIZE + SQUARE_SIZE // 2
+                            explosions.append(Explosion(explosion_x, explosion_y, use_alternative=False))
                         board[row][col] = board[src_row][src_col]
                         board[src_row][src_col] = None
                         current_player = "B"
                         selected = None
                         valid_moves = []
                         winner = check_win(board)
-                        if winner is not None:
+                        if winner is not None or not has_moves(board, current_player):
                             game_over = True
-                        elif not has_moves(board, current_player):
-                            game_over = True
-                            winner = "W"
+                            # Cascade pour les pions restants selon le vainqueur
+                        # Pas de cascade ici pour les blancs gagnants (déjà géré plus bas)
                     else:
                         if board[row][col] == current_player:
                             selected = (row, col)
@@ -178,30 +243,71 @@ def main():
 
         # Tour de l'IA (joueur noir)
         if current_player == "B" and not game_over:
-            pygame.time.wait(500)  # Pause pour voir le déroulé
+            pygame.time.wait(500)
             move = ai_move(board, "B")
             if move:
                 (src_row, src_col), (dest_row, dest_col) = move
+                # Lorsqu'un noir capture, c'est forcément sur une pièce adverse (donc blanche)
+                if board[dest_row][dest_col] is not None:
+                    explosion_x = dest_col * SQUARE_SIZE + SQUARE_SIZE // 2
+                    explosion_y = dest_row * SQUARE_SIZE + SQUARE_SIZE // 2
+                    # Utiliser l'explosion alternative pour les captures de blancs par les noirs
+                    explosions.append(Explosion(explosion_x, explosion_y, use_alternative=True))
                 board[dest_row][dest_col] = board[src_row][src_col]
                 board[src_row][src_col] = None
                 current_player = "W"
                 winner = check_win(board)
-                if winner is not None:
+                if winner is not None or not has_moves(board, current_player):
                     game_over = True
-                elif not has_moves(board, current_player):
-                    game_over = True
-                    winner = "B"
             else:
                 game_over = True
                 winner = "W"
 
-        draw_board(screen, board, selected, valid_moves)
-
-        # Affichage du message de fin de partie
+        # Gestion de la cascade d'explosions en fin de partie
+        # Si les blancs gagnent, on cascade sur les pions noirs (explosion par défaut)
+        # Si les noirs gagnent, on cascade sur les pions blancs (explosion alternative)
         if game_over:
+            if not cascade_started:
+                cascade_list = []
+                if winner == "W":
+                    for row in range(BOARD_SIZE):
+                        for col in range(BOARD_SIZE):
+                            if board[row][col] == "B":
+                                cascade_list.append((row, col))
+                    cascade_explosion_alternative = False
+                elif winner == "B":
+                    for row in range(BOARD_SIZE):
+                        for col in range(BOARD_SIZE):
+                            if board[row][col] == "W":
+                                cascade_list.append((row, col))
+                    cascade_explosion_alternative = True
+                cascade_started = True
+                explosion_cascade_timer = explosion_delay
+            else:
+                explosion_cascade_timer -= 1
+                if explosion_cascade_timer <= 0 and cascade_list:
+                    row, col = cascade_list.pop(0)
+                    explosion_x = col * SQUARE_SIZE + SQUARE_SIZE // 2
+                    explosion_y = row * SQUARE_SIZE + SQUARE_SIZE // 2
+                    explosions.append(Explosion(explosion_x, explosion_y, use_alternative=cascade_explosion_alternative))
+                    board[row][col] = None
+                    explosion_cascade_timer = explosion_delay
+
+        # Dessiner le plateau et les pions
+        draw_board(screen, board, selected, valid_moves, white_pawn_img, black_pawn_img)
+
+        # Mettre à jour et dessiner les explosions animées
+        for explosion in explosions[:]:
+            explosion.update()
+            explosion.draw(screen)
+            if explosion.current_frame > explosion.duration:
+                explosions.remove(explosion)
+
+        # Affichage du message de fin de partie (uniquement si la cascade est terminée)
+        if game_over and not cascade_list:
             msg = f"{winner} gagne!" if winner is not None else "Match nul!"
             text = font.render(msg, True, RED)
-            text_rect = text.get_rect(center=(WIDTH//2, HEIGHT//2))
+            text_rect = text.get_rect(center=(WIDTH // 2, HEIGHT // 2))
             screen.blit(text, text_rect)
 
         pygame.display.flip()
