@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 # ----- Constante pour config -----
-BOARD_SIZE = 10
+BOARD_SIZE = 8
 SQUARE_SIZE = 80
 WIDTH = BOARD_SIZE * SQUARE_SIZE
 HEIGHT = BOARD_SIZE * SQUARE_SIZE
@@ -18,6 +18,8 @@ DARK_BROWN = (139, 69, 19)
 BLUE = (50, 50, 255)
 GREEN = (0, 200, 0)
 RED = (200, 0, 0)
+
+DIFFICULTY = 1
 
 # ----- class pour les explos-----
 class Explosion:
@@ -100,11 +102,18 @@ def get_valid_moves(board, row, col):
     return moves
 
 def draw_board(screen, board, selected, valid_moves, white_img, black_img):
+    try:
+        texture1 = pygame.image.load("case1.png").convert()
+        texture2 = pygame.image.load("case2.png").convert()
+    except pygame.error:
+        print("Erreur : Impossible de charger 'case1.png' ou 'case2.png'.")
+        sys.exit()
+
     for row in range(BOARD_SIZE):
         for col in range(BOARD_SIZE):
-            color = LIGHT_BROWN if (row + col) % 2 == 0 else DARK_BROWN
+            texture = texture1 if (row + col) % 2 == 0 else texture2
             rect = pygame.Rect(col * SQUARE_SIZE, row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE)
-            pygame.draw.rect(screen, color, rect)
+            screen.blit(pygame.transform.scale(texture, (SQUARE_SIZE, SQUARE_SIZE)), rect)
 
             if selected == (row, col):
                 pygame.draw.rect(screen, BLUE, rect, 4)
@@ -115,7 +124,7 @@ def draw_board(screen, board, selected, valid_moves, white_img, black_img):
             if piece is not None:
                 pawn_img = white_img if piece == "W" else black_img
                 pawn_rect = pawn_img.get_rect(center=(col * SQUARE_SIZE + SQUARE_SIZE // 2,
-                                                        row * SQUARE_SIZE + SQUARE_SIZE // 2))
+                                                      row * SQUARE_SIZE + SQUARE_SIZE // 2))
                 screen.blit(pawn_img, pawn_rect)
 
 def check_win(board):
@@ -174,28 +183,93 @@ class BreakthroughState:
         self.board[action.dst_row][action.dst_col] = action.captured
         self.current_player = "B" if self.current_player == "W" else "W"
 
-    def evaluate(self) -> float:
-        for col in range(BOARD_SIZE):
-            if self.board[0][col] == "W":
-                return 10000
-            if self.board[BOARD_SIZE-1][col] == "B":
-                return -10000
 
+# fonction pour evaluer l'état du jeu tiré de https://www.codeproject.com/Articles/37024/Simple-AI-for-the-Game-of-Breakthrough
+
+    def evaluate(self) -> float: 
         score = 0
         white_pawns = 0
         black_pawns = 0
+
+        WIN_VALUE = 10000
+        PIECE_VALUE = 100
+        PIECE_ALMOST_WIN_VALUE = 500
+        PIECE_DANGER_VALUE = 10
+        PIECE_HIGH_DANGER_VALUE = 50
+        PIECE_ATTACK_VALUE = 30
+        PIECE_PROTECTION_VALUE = 20
+        CONNECTION_HORIZONTAL_VALUE = 15
+        CONNECTION_VERTICAL_VALUE = 10
+        PIECE_MOBILITY_VALUE = 5
+        COLUMN_HOLE_VALUE = 50
+        HOME_GROUND_VALUE = 20
+
+        for col in range(BOARD_SIZE):
+            if self.board[0][col] == "W":  
+                return WIN_VALUE
+            if self.board[BOARD_SIZE-1][col] == "B":  
+                return -WIN_VALUE
+
         for row in range(BOARD_SIZE):
             for col in range(BOARD_SIZE):
-                if self.board[row][col] == "W":
-                    white_pawns += 1
-                    score += (BOARD_SIZE - row) 
-                elif self.board[row][col] == "B":
-                    black_pawns += 1
-                    score -= (row + 1) 
+                piece = self.board[row][col]
+                if piece is None:
+                    continue
 
-        score += (white_pawns - black_pawns) * 10
+                piece_score = PIECE_VALUE
+
+                if piece == "W":
+                    piece_score += row * PIECE_DANGER_VALUE
+                    if row == BOARD_SIZE - 2:  
+                        piece_score += PIECE_HIGH_DANGER_VALUE
+                elif piece == "B":
+                    piece_score += (BOARD_SIZE - 1 - row) * PIECE_DANGER_VALUE
+                    if row == 1: 
+                        piece_score += PIECE_HIGH_DANGER_VALUE
+
+                valid_moves = get_valid_moves(self.board, row, col)
+                piece_score += len(valid_moves) * PIECE_MOBILITY_VALUE
+
+                for move in valid_moves:
+                    target_row, target_col = move
+                    target_piece = self.board[target_row][target_col]
+                    if target_piece is not None:
+                        if target_piece != piece:  
+                            piece_score += PIECE_ATTACK_VALUE
+                        else:  
+                            piece_score += PIECE_PROTECTION_VALUE
+
+                if col > 0 and self.board[row][col - 1] == piece:
+                    piece_score += CONNECTION_HORIZONTAL_VALUE
+                if row > 0 and self.board[row - 1][col] == piece:
+                    piece_score += CONNECTION_VERTICAL_VALUE
+
+                if piece == "W":
+                    white_pawns += 1
+                    score += piece_score
+                elif piece == "B":
+                    black_pawns += 1
+                    score -= piece_score
+
+        for col in range(BOARD_SIZE):
+            white_in_column = any(self.board[row][col] == "W" for row in range(BOARD_SIZE))
+            black_in_column = any(self.board[row][col] == "B" for row in range(BOARD_SIZE))
+            if not white_in_column:
+                score -= COLUMN_HOLE_VALUE
+            if not black_in_column:
+                score += COLUMN_HOLE_VALUE
+
+        for col in range(BOARD_SIZE):
+            if self.board[BOARD_SIZE - 1][col] == "W":
+                score += HOME_GROUND_VALUE
+            if self.board[0][col] == "B":
+                score -= HOME_GROUND_VALUE
+
+        score += (white_pawns - black_pawns) * PIECE_VALUE
 
         return score
+
+
 
     def is_terminal(self) -> bool:
         for col in range(BOARD_SIZE):
@@ -214,6 +288,14 @@ class BreakthroughMinMaxSearcher:
     def find_best_action(self, state: BreakthroughState) -> Optional[BreakthroughAction]:
         if state.is_terminal():
             return None
+
+        for action in state.get_actions():
+            state.apply_action(action)
+            if state.is_terminal():  
+                state.undo_action(action)
+                return action
+            state.undo_action(action)
+
         actions = state.get_actions()
         if not actions:
             return None
@@ -224,6 +306,9 @@ class BreakthroughMinMaxSearcher:
             best_value = math.inf
         alpha = -math.inf
         beta = math.inf
+
+        actions.sort(key=lambda action: self.evaluate_action(state, action), reverse=True)
+
         for action in actions:
             state.apply_action(action)
             if state.current_player == "B":  
@@ -240,6 +325,12 @@ class BreakthroughMinMaxSearcher:
                 beta = min(beta, value)
             state.undo_action(action)
         return best_action
+
+    def evaluate_action(self, state: BreakthroughState, action: BreakthroughAction) -> float:
+        state.apply_action(action)
+        value = state.evaluate()
+        state.undo_action(action)
+        return value
 
     def min_value(self, state: BreakthroughState, depth: int, alpha: float, beta: float) -> float:
         self.nodes_explored += 1
