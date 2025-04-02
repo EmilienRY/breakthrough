@@ -5,7 +5,7 @@ import math
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
-# ----- Constantes et configuration -----
+# ----- Constante pour config -----
 BOARD_SIZE = 10
 SQUARE_SIZE = 80
 WIDTH = BOARD_SIZE * SQUARE_SIZE
@@ -19,7 +19,7 @@ BLUE = (50, 50, 255)
 GREEN = (0, 200, 0)
 RED = (200, 0, 0)
 
-# ----- Classes pour les explosions (déjà présentes) -----
+# ----- class pour les explos-----
 class Explosion:
     explosion_img_default = None  
     explosion_img_alternative = None  
@@ -67,7 +67,7 @@ class Explosion:
         rect = explosion_surface.get_rect(center=(self.x, self.y))
         screen.blit(explosion_surface, rect)
 
-# ----- Fonctions existantes du jeu graphique -----
+# ----- fonc qui vérifient info de la partie et dessine plateau -----
 def init_board():
     board = [[None for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)]
     for row in range(2):
@@ -134,9 +134,7 @@ def has_moves(board, player):
                     return True
     return False
 
-# La fonction ai_move initiale (aléatoire) est désormais remplacée par l'IA minimax.
-
-# ----- Nouvelles classes pour intégrer le minimax -----
+# ----- class pour minmax (états du jeu, fonc pour min max, etc ...)-----
 
 @dataclass
 class BreakthroughAction:
@@ -148,7 +146,6 @@ class BreakthroughAction:
 
 class BreakthroughState:
     def __init__(self, board: List[List[Optional[str]]], current_player: str):
-        # On travaille sur le même plateau (les modifications seront annulées par le searcher)
         self.board = board
         self.current_player = current_player
 
@@ -210,7 +207,6 @@ class BreakthroughMinMaxSearcher:
         if not actions:
             return None
         best_action = None
-        # Pour le joueur "W" (maximisateur) on cherche le score maximum, pour "B" (minimisateur) le score minimum
         if state.current_player == "W":
             best_value = -math.inf
         else:
@@ -219,13 +215,13 @@ class BreakthroughMinMaxSearcher:
         beta = math.inf
         for action in actions:
             state.apply_action(action)
-            if state.current_player == "B":  # le coup précédent était joué par "W" (maximisateur)
+            if state.current_player == "B":  
                 value = self.min_value(state, 1, alpha, beta)
                 if value > best_value:
                     best_value = value
                     best_action = action
                 alpha = max(alpha, value)
-            else:  # maintenant "W", donc le coup précédent était de "B" (minimisateur)
+            else:  
                 value = self.max_value(state, 1, alpha, beta)
                 if value < best_value:
                     best_value = value
@@ -264,7 +260,7 @@ class BreakthroughMinMaxSearcher:
                 break
         return value
 
-# ----- Boucle principale du jeu graphique -----
+# ----- boucle de jeu -----
 def main():
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
