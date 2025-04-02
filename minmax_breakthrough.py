@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 # ----- Constantes et configuration -----
-BOARD_SIZE = 8
+BOARD_SIZE = 10
 SQUARE_SIZE = 80
 WIDTH = BOARD_SIZE * SQUARE_SIZE
 HEIGHT = BOARD_SIZE * SQUARE_SIZE
@@ -163,7 +163,6 @@ class BreakthroughState:
 
     def apply_action(self, action: BreakthroughAction) -> None:
         piece = self.board[action.src_row][action.src_col]
-        # Sauvegarde du pion capturé (le cas échéant)
         action.captured = self.board[action.dst_row][action.dst_col]
         self.board[action.dst_row][action.dst_col] = piece
         self.board[action.src_row][action.src_col] = None
@@ -176,12 +175,11 @@ class BreakthroughState:
         self.current_player = "B" if self.current_player == "W" else "W"
 
     def evaluate(self) -> float:
-        # Victoire : un pion blanc atteint la première rangée ou un pion noir la dernière
         for col in range(BOARD_SIZE):
             if self.board[0][col] == "W":
-                return 1000
+                return 100000
             if self.board[BOARD_SIZE-1][col] == "B":
-                return -1000
+                return -100000
         score = 0
         for row in range(BOARD_SIZE):
             for col in range(BOARD_SIZE):
@@ -200,7 +198,7 @@ class BreakthroughState:
         return False
 
 class BreakthroughMinMaxSearcher:
-    def __init__(self, max_depth: int = 3):
+    def __init__(self, max_depth: int = 5):
         self.max_depth = max_depth
         self.nodes_explored = 0
         self.max_depth_reached = 0
@@ -274,7 +272,7 @@ def main():
     clock = pygame.time.Clock()
 
     board = init_board()
-    current_player = "W"  # L'humain joue avec les blancs ("W")
+    current_player = "W"  
     selected = None
     valid_moves = []
     game_over = False
@@ -299,8 +297,7 @@ def main():
 
     font = pygame.font.SysFont(None, 48)
 
-    # Instanciation du searcher minimax pour l'IA
-    searcher = BreakthroughMinMaxSearcher(max_depth=3)
+    searcher = BreakthroughMinMaxSearcher(max_depth=2)
 
     while True:
         for event in pygame.event.get():
@@ -308,7 +305,6 @@ def main():
                 pygame.quit()
                 sys.exit()
 
-            # Gestion des coups de l'humain (joueur "W")
             if current_player == "W" and not game_over and event.type == pygame.MOUSEBUTTONDOWN:
                 mouse_x, mouse_y = pygame.mouse.get_pos()
                 col = mouse_x // SQUARE_SIZE
@@ -341,10 +337,8 @@ def main():
                             selected = None
                             valid_moves = []
 
-        # Tour de l'IA ("B") utilisant le minimax pour choisir un bon coup
         if current_player == "B" and not game_over:
             pygame.time.wait(500)
-            # Créer un état pour le minimax (attention : on utilise le même board, les modifications sont annulées)
             state = BreakthroughState(board, current_player)
             best_action = searcher.find_best_action(state)
             if best_action:
@@ -362,7 +356,6 @@ def main():
                 game_over = True
                 winner = "W"
 
-        # Gestion de l'animation de fin de partie (cascade d'explosions)
         if game_over:
             if not cascade_started:
                 cascade_list = []

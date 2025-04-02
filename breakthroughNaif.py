@@ -1,6 +1,10 @@
 import pygame
 import sys
 import random
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from typing import TypeVar, Generic, List, Optional, Tuple
+import math
 
 BOARD_SIZE = 8
 SQUARE_SIZE = 80
@@ -14,6 +18,227 @@ DARK_BROWN = (139, 69, 19)
 BLUE = (50, 50, 255)
 GREEN = (0, 200, 0)
 RED = (200, 0, 0)
+
+
+S = TypeVar('S')
+A = TypeVar('A')
+
+@dataclass
+class SearchStats:
+    nodes_explored: int = 0
+    max_depth_reached: int = 0
+
+class GameState(ABC, Generic[S, A]):
+    
+    @abstractmethod
+    def get_actions(self) -> List[A]:
+        pass
+ 
+    @abstractmethod
+    def apply_action(self, action: A) -> None:
+        pass
+    
+    @abstractmethod
+    def undo_action(self, action: A) -> None:
+        pass
+
+    @abstractmethod
+    def evaluate(self) -> float:
+        pass
+    
+    @abstractmethod
+    def is_terminal(self) -> bool:
+        pass
+
+
+
+class MinMaxSearcher(Generic[S, A]):
+    
+    def __init__(self, max_depth: int = 5):
+        self.max_depth = max_depth
+        self.stats = SearchStats()
+            
+    
+    def find_best_action(self, state: GameState[S, A]) -> Optional[A]:  
+        if state.is_terminal():
+            return None
+            
+        actions = state.get_actions()
+        if not actions:
+            return None
+            
+        best_action = None
+        best_value = -math.inf if state.current_player == 'X' else math.inf
+        alpha = -math.inf
+        beta = math.inf
+
+        for action in actions:
+            state.apply_action(action)
+            if state.current_player == 'O':  
+                value = self.min_value(state, 1, alpha, beta)
+                if value > best_value:
+                    best_value = value
+                    best_action = action
+                alpha = max(alpha, value)
+            else: 
+                value = self.max_value(state, 1, alpha, beta)
+                if value < best_value:
+                    best_value = value
+                    best_action = action
+                beta = min(beta, value)
+            state.undo_action(action)
+            
+        return best_action
+  
+    def min_value(self, state: GameState[S, A], depth: int, alpha: float, beta: float) -> float:
+        self.stats.nodes_explored += 1
+        self.stats.max_depth_reached = max(self.stats.max_depth_reached, depth)
+        
+        if state.is_terminal() or depth >= self.max_depth:
+            return state.evaluate()
+            
+        value = math.inf
+        actions = state.get_actions()
+    
+        for action in actions:
+            state.apply_action(action)
+            value = min(value, self.max_value(state, depth + 1, alpha, beta))
+            state.undo_action(action)
+            
+            beta = min(beta, value)
+            if beta <= alpha:
+                break
+                
+        return value
+    
+    def max_value(self, state: GameState[S, A], depth: int, alpha: float, beta: float) -> float:
+        self.stats.nodes_explored += 1
+        self.stats.max_depth_reached = max(self.stats.max_depth_reached, depth)
+        
+        if state.is_terminal() or depth >= self.max_depth:
+            return state.evaluate()
+            
+        value = -math.inf
+        actions = state.get_actions()
+        
+        for action in actions:
+            state.apply_action(action)
+            value = max(value, self.min_value(state, depth + 1, alpha, beta))
+            state.undo_action(action)
+            
+            alpha = max(alpha, value)
+            if beta <= alpha:
+                break
+                
+        return value
+
+
+
+
+
+
+@dataclass
+class BreakthroughAction:
+    row: int
+    col: int
+
+class BreakthroughState(GameState[List[List[str]], BreakthroughAction]):
+    def __init__(self, size: int, alignement: int):
+        self.size = size
+        self.alignement = alignement
+        self.board = [[' ' for _ in range(size)] for _ in range(size)]
+        self.current_player = 'X' 
+        
+    def get_actions(self) -> List[BreakthroughAction]: 
+        actions = []
+        center = self.size // 2
+        for i in range(self.size):
+            for j in range(self.size):
+                if self.board[i][j] == ' ':
+                    if (i == center and j == center) or \
+                       (i in (0, self.size-1) and j in (0, self.size-1)):
+                        actions.insert(0, BreakthroughAction(i, j))
+                    else:
+                        actions.append(BreakthroughAction(i, j))
+        actions.sort(key=lambda a: (a.row == self.size // 2 and a.col == self.size // 2, a.row in (0, self.size-1) and a.col in (0, self.size-1)), reverse=True)
+        return actions
+    
+    def apply_action(self, action: BreakthroughAction) -> None:
+        self.board[action.row][action.col] = self.current_player
+        self.current_player = 'O' if self.current_player == 'X' else 'X'
+    
+    def undo_action(self, action: BreakthroughAction) -> None:
+        self.board[action.row][action.col] = ' '    
+        self.current_player = 'O' if self.current_player == 'X' else 'X'
+    
+    def evaluate(self) -> float:
+        if self._is_winner('X'):
+            return 1000
+        elif self._is_winner('O'):
+            return -1000
+
+        score = 0
+        
+        for i in range(self.size):
+            for j in range(self.size - self.alignement + 1):
+                line = [self.board[i][j + k] for k in range(self.alignement)]
+                score += self._evaluate_line(line)
+                
+                if i <= self.size - self.alignement:
+                    column = [self.board[i + k][j] for k in range(self.alignement)]
+                    score += self._evaluate_line(column)
+                
+                if i <= self.size - self.alignement:
+                    diagonal1 = [self.board[i + k][j + k] for k in range(self.alignement)]
+                    score += self._evaluate_line(diagonal1)
+                    if j + self.alignement <= self.size:
+                        diagonal2 = [self.board[i + k][j + self.alignement - k - 1] for k in range(self.alignement)]
+                        score += self._evaluate_line(diagonal2)
+        
+        return score
+
+    def _evaluate_line(self, line: List[str]) -> int:
+        x_count = line.count('X')
+        o_count = line.count('O')
+
+        if x_count > 0 and o_count > 0:
+            return 0
+
+        if o_count == 0 and x_count > 0:
+            return 10 * x_count 
+
+        if x_count == 0 and o_count > 0:
+            return -10 * o_count 
+
+        return 0
+    
+    def is_terminal(self) -> bool:
+        if self._is_winner('X') or self._is_winner('O'):
+            return True
+        return not any(' ' in row for row in self.board)
+
+
+    
+    def _is_winner(self, player: str) -> bool:
+        for i in range(self.size):
+            for j in range(self.size - self.alignement + 1):
+                if all(self.board[i][j + k] == player for k in range(self.alignement)):
+                    return True
+        
+        for i in range(self.size - self.alignement + 1):
+            for j in range(self.size):
+                if all(self.board[i + k][j] == player for k in range(self.alignement)):
+                    return True
+        
+        for i in range(self.size - self.alignement + 1):
+            for j in range(self.size - self.alignement + 1):
+                if all(self.board[i + k][j + k] == player for k in range(self.alignement)):
+                    return True
+                if all(self.board[i + k][j + self.alignement - k - 1] == player for k in range(self.alignement)):
+                    return True
+        
+        return False
+
 
 class Explosion:
     explosion_img_default = None  
@@ -141,7 +366,7 @@ def has_moves(board, player):
 
 def ai_move(board, player):
     """
-    IA très simple qui retourne aléatoirement un coup parmi ceux possibles pour le joueur donné.
+    Juste bouge au pif pour l'instant 
     """
     moves = []
     for row in range(BOARD_SIZE):
