@@ -5,7 +5,8 @@ import math
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 import random
-
+import time
+import datetime
 # ----- Constante pour config -----
 BOARD_SIZE = 8
 SQUARE_SIZE = 125
@@ -140,7 +141,7 @@ def has_moves(board, player):
                     return True
     return False
 
-# ----- class pour minmax (états du jeu, fonc pour min max, etc ...)-----
+# ----- class états du jeu-----
 
 @dataclass
 class BreakthroughAction:
@@ -182,93 +183,6 @@ class BreakthroughState:
 
 
 
-
-# fonction pour evaluer l'état du jeu tiré de https://www.codeproject.com/Articles/37024/Simple-AI-for-the-Game-of-Breakthrough
-
-    def evaluateOld(self) -> float: 
-        score = 0
-        white_pawns = 0
-        black_pawns = 0
-
-        WIN_VALUE = 10000
-        PIECE_VALUE = 100
-        PIECE_ALMOST_WIN_VALUE = 500
-        PIECE_DANGER_VALUE = 10
-        PIECE_HIGH_DANGER_VALUE = 50
-        PIECE_ATTACK_VALUE = 30
-        PIECE_PROTECTION_VALUE = 20
-        CONNECTION_HORIZONTAL_VALUE = 15
-        CONNECTION_VERTICAL_VALUE = 10
-        PIECE_MOBILITY_VALUE = 5
-        COLUMN_HOLE_VALUE = 50
-        HOME_GROUND_VALUE = 20
-
-        for col in range(BOARD_SIZE):
-            if self.board[0][col] == "W":  
-                return WIN_VALUE
-            if self.board[BOARD_SIZE-1][col] == "B":  
-                return -WIN_VALUE
-
-        for row in range(BOARD_SIZE):
-            for col in range(BOARD_SIZE):
-                piece = self.board[row][col]
-                if piece is None:
-                    continue
-
-                piece_score = PIECE_VALUE
-
-                if piece == "W":
-                    piece_score += row * PIECE_DANGER_VALUE
-                    if row == BOARD_SIZE - 2:  
-                        piece_score += PIECE_HIGH_DANGER_VALUE
-                elif piece == "B":
-                    piece_score += (BOARD_SIZE - 1 - row) * PIECE_DANGER_VALUE
-                    if row == 1: 
-                        piece_score += PIECE_HIGH_DANGER_VALUE
-
-                valid_moves = get_valid_moves(self.board, row, col)
-                piece_score += len(valid_moves) * PIECE_MOBILITY_VALUE
-
-                for move in valid_moves:
-                    target_row, target_col = move
-                    target_piece = self.board[target_row][target_col]
-                    if target_piece is not None:
-                        if target_piece != piece:  
-                            piece_score += PIECE_ATTACK_VALUE
-                        else:  
-                            piece_score += PIECE_PROTECTION_VALUE
-
-                if col > 0 and self.board[row][col - 1] == piece:
-                    piece_score += CONNECTION_HORIZONTAL_VALUE
-                if row > 0 and self.board[row - 1][col] == piece:
-                    piece_score += CONNECTION_VERTICAL_VALUE
-
-                if piece == "W":
-                    white_pawns += 1
-                    score += piece_score
-                elif piece == "B":
-                    black_pawns += 1
-                    score -= piece_score
-
-        for col in range(BOARD_SIZE):
-            white_in_column = any(self.board[row][col] == "W" for row in range(BOARD_SIZE))
-            black_in_column = any(self.board[row][col] == "B" for row in range(BOARD_SIZE))
-            if not white_in_column:
-                score -= COLUMN_HOLE_VALUE
-            if not black_in_column:
-                score += COLUMN_HOLE_VALUE
-
-        for col in range(BOARD_SIZE):
-            if self.board[BOARD_SIZE - 1][col] == "W":
-                score += HOME_GROUND_VALUE
-            if self.board[0][col] == "B":
-                score -= HOME_GROUND_VALUE
-
-        score += (white_pawns - black_pawns) * PIECE_VALUE
-
-        return score
-
-
 # fonction pour evaluer l'état du jeu tiré de https://www.codeproject.com/Articles/37024/Simple-AI-for-the-Game-of-Breakthrough
 
     def evaluate(self) -> float:
@@ -284,7 +198,6 @@ class BreakthroughState:
         white_central = 0
         black_central = 0
 
-        # Constants
         WIN_VALUE = 100000
         PIECE_VALUE = 100
         PIECE_ALMOST_WIN_VALUE = 1000
@@ -297,48 +210,39 @@ class BreakthroughState:
         DEFENSE_VALUE = 20
         ATTACK_VALUE = 35
 
-        # Check for immediate wins
         for col in range(BOARD_SIZE):
             if self.board[0][col] == "W":
                 return WIN_VALUE
             if self.board[BOARD_SIZE-1][col] == "B":
                 return -WIN_VALUE
 
-        # Evaluate each piece
         for row in range(BOARD_SIZE):
             for col in range(BOARD_SIZE):
                 piece = self.board[row][col]
                 if piece is None:
                     continue
 
-                # Basic piece value and counting
                 if piece == "W":
                     white_pawns += 1
-                    # Advancement (closer to promotion is better)
                     advance_score = (BOARD_SIZE - 1 - row) * ADVANCE_VALUE
                     white_advanced += advance_score
                     
-                    # Central control (controlling center is better)
                     if 2 <= col <= BOARD_SIZE-3:
                         white_central += CENTRAL_VALUE
                 else:
                     black_pawns += 1
-                    # Advancement (closer to promotion is better)
                     advance_score = row * ADVANCE_VALUE
                     black_advanced += advance_score
                     
-                    # Central control
                     if 2 <= col <= BOARD_SIZE-3:
                         black_central += CENTRAL_VALUE
 
-                # Mobility and protection
                 valid_moves = get_valid_moves(self.board, row, col)
                 if piece == "W":
                     white_mobility += len(valid_moves) * MOBILITY_VALUE
                 else:
                     black_mobility += len(valid_moves) * MOBILITY_VALUE
 
-                # Protection (pawns defended by other pawns)
                 protection = 0
                 direction = -1 if piece == "W" else 1
                 protected_row = row - direction
@@ -353,7 +257,6 @@ class BreakthroughState:
                                 else:
                                     black_protected += PROTECTION_VALUE
 
-                # Attack potential (pawns that can capture)
                 for move in valid_moves:
                     target_piece = self.board[move[0]][move[1]]
                     if target_piece is not None and target_piece != piece:
@@ -362,9 +265,7 @@ class BreakthroughState:
                         else:
                             score -= ATTACK_VALUE
 
-        # Pawn structure evaluation
         for col in range(BOARD_SIZE):
-            # Column control (having pawns in each column is good)
             white_in_column = any(self.board[row][col] == "W" for row in range(BOARD_SIZE))
             black_in_column = any(self.board[row][col] == "B" for row in range(BOARD_SIZE))
             
@@ -373,28 +274,24 @@ class BreakthroughState:
             if black_in_column:
                 score -= COLUMN_CONTROL_VALUE
 
-            # Pawn pairs (side-by-side pawns are stronger)
             for row in range(BOARD_SIZE):
                 if self.board[row][col] == "W" and col > 0 and self.board[row][col-1] == "W":
                     score += PAIR_VALUE
                 if self.board[row][col] == "B" and col > 0 and self.board[row][col-1] == "B":
                     score -= PAIR_VALUE
 
-        # Pawns almost promoting
         for col in range(BOARD_SIZE):
             if self.board[1][col] == "W":
                 score += PIECE_ALMOST_WIN_VALUE * 0.8
             if self.board[BOARD_SIZE-2][col] == "B":
                 score -= PIECE_ALMOST_WIN_VALUE * 0.8
 
-        # Combine all factors
         score += (white_pawns - black_pawns) * PIECE_VALUE
         score += white_advanced - black_advanced
         score += white_protected - black_protected
         score += white_mobility - black_mobility
         score += white_central - black_central
 
-        # Encourage keeping some defensive pieces
         if white_pawns > black_pawns and black_pawns < 4:
             score += DEFENSE_VALUE * (4 - black_pawns)
         elif black_pawns > white_pawns and white_pawns < 4:
@@ -527,7 +424,7 @@ def main(mode="AI", difficulty="medium"):
 
     font = pygame.font.SysFont(None, 48)
 
-    searcher = BreakthroughMinMaxSearcher(max_depth={"easy": 1, "medium": 2, "hard": 3}[difficulty])
+    searcher = BreakthroughMinMaxSearcher(max_depth={"easy": 1, "medium": 2, "hard": 4}[difficulty])
 
     while True:
         for event in pygame.event.get():
@@ -581,7 +478,9 @@ def main(mode="AI", difficulty="medium"):
                             valid_moves = []
 
         if mode == "AI" and current_player == "B" and not game_over:
-            pygame.time.wait(random.randint(1000, 3000))
+
+
+            pygame.time.wait(random.randint(1000, 2000))
             state = BreakthroughState(board, current_player)
             best_action = searcher.find_best_action(state)
             if best_action:
@@ -598,6 +497,8 @@ def main(mode="AI", difficulty="medium"):
             else:
                 game_over = True
                 winner = "W"
+
+
         elif current_player == "B" and not game_over and event.type == pygame.MOUSEBUTTONDOWN:
             mouse_x, mouse_y = pygame.mouse.get_pos()
             col = mouse_x // SQUARE_SIZE
@@ -613,7 +514,7 @@ def main(mode="AI", difficulty="medium"):
                     if board[row][col] is not None:
                         explosion_x = col * SQUARE_SIZE + SQUARE_SIZE // 2
                         explosion_y = row * SQUARE_SIZE + SQUARE_SIZE // 2
-                        explosions.append(Explosion(explosion_x, explosion_y, use_alternative=False))
+                        explosions.append(Explosion(explosion_x, explosion_y, use_alternative=True))
                     board[row][col] = board[src_row][src_col]
                     board[src_row][src_col] = None
                     current_player = "B" if current_player == "W" else "W"
