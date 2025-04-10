@@ -560,7 +560,6 @@ def main(mode="AI", difficulty="medium"):
                         if winner is not None or not has_moves(board, current_player):
                             game_over = True
 
-                        # Update the display immediately after the player's move
                         draw_board(screen, board, selected, valid_moves, white_pawn_img, black_pawn_img)
                         for explosion in explosions[:]:
                             explosion.update()
@@ -594,6 +593,48 @@ def main(mode="AI", difficulty="medium"):
             else:
                 game_over = True
                 winner = "W"
+        elif current_player == "B" and not game_over and event.type == pygame.MOUSEBUTTONDOWN:
+            mouse_x, mouse_y = pygame.mouse.get_pos()
+            col = mouse_x // SQUARE_SIZE
+            row = mouse_y // SQUARE_SIZE
+
+            if selected is None:
+                if board[row][col] == current_player:
+                    selected = (row, col)
+                    valid_moves = get_valid_moves(board, row, col)
+            else:
+                if (row, col) in valid_moves:
+                    src_row, src_col = selected
+                    if board[row][col] is not None:
+                        explosion_x = col * SQUARE_SIZE + SQUARE_SIZE // 2
+                        explosion_y = row * SQUARE_SIZE + SQUARE_SIZE // 2
+                        explosions.append(Explosion(explosion_x, explosion_y, use_alternative=True))
+                    board[row][col] = board[src_row][src_col]
+                    board[src_row][src_col] = None
+                    current_player = "B" if current_player == "W" else "W"
+                    selected = None
+                    valid_moves = []
+                    winner = check_win(board)
+                    if winner is not None or not has_moves(board, current_player):
+                        game_over = True
+                    draw_board(screen, board, selected, valid_moves, white_pawn_img, black_pawn_img)
+                    for explosion in explosions[:]:
+                        explosion.update()
+                        explosion.draw(screen)
+                        if explosion.current_frame > explosion.duration:
+                            explosions.remove(explosion)
+                    pygame.display.flip()
+                else:
+                    if board[row][col] == current_player:
+                        selected = (row, col)
+                        valid_moves = get_valid_moves(board, row, col)
+                    else:
+                        selected = None
+                        valid_moves = []            
+
+
+
+
 
         if game_over:
             if not cascade_started:
