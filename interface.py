@@ -46,10 +46,8 @@ def run_interface():
     button_rect_hard.size = button_hard.get_size()
     button_rect_human_vs_human.size = button_human_vs_human.get_size()
 
-    # Title position
     title_rect = title_img.get_rect(center=(WIDTH // 2, 100))
 
-    # Main loop
     running = True
     while running:
         for event in pygame.event.get():
