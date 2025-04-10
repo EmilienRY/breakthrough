@@ -4,6 +4,7 @@ import random
 import math
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
+import random
 
 # ----- Constante pour config -----
 BOARD_SIZE = 8
@@ -115,11 +116,7 @@ def draw_board(screen, board, selected, valid_moves, white_img, black_img):
             rect = pygame.Rect(col * SQUARE_SIZE, row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE)
             screen.blit(pygame.transform.scale(texture, (SQUARE_SIZE, SQUARE_SIZE)), rect)
 
-            if selected == (row, col):
-                pygame.draw.rect(screen, BLUE, rect, 4)
-            if (row, col) in valid_moves:
-                pygame.draw.rect(screen, GREEN, rect, 4)
-
+            # Removed blue and green borders for selected pieces and valid moves
             piece = board[row][col]
             if piece is not None:
                 pawn_img = white_img if piece == "W" else black_img
@@ -134,7 +131,7 @@ def check_win(board):
         if board[BOARD_SIZE-1][col] == "B":
             return "B"
     return None
-
+    
 def has_moves(board, player):
     for row in range(BOARD_SIZE):
         for col in range(BOARD_SIZE):
@@ -184,9 +181,11 @@ class BreakthroughState:
         self.current_player = "B" if self.current_player == "W" else "W"
 
 
+
+
 # fonction pour evaluer l'état du jeu tiré de https://www.codeproject.com/Articles/37024/Simple-AI-for-the-Game-of-Breakthrough
 
-    def evaluate(self) -> float: 
+    def evaluateOld(self) -> float: 
         score = 0
         white_pawns = 0
         black_pawns = 0
@@ -269,6 +268,139 @@ class BreakthroughState:
 
         return score
 
+
+# fonction pour evaluer l'état du jeu tiré de https://www.codeproject.com/Articles/37024/Simple-AI-for-the-Game-of-Breakthrough
+
+    def evaluate(self) -> float:
+        score = 0
+        white_pawns = 0
+        black_pawns = 0
+        white_advanced = 0
+        black_advanced = 0
+        white_protected = 0
+        black_protected = 0
+        white_mobility = 0
+        black_mobility = 0
+        white_central = 0
+        black_central = 0
+
+        # Constants
+        WIN_VALUE = 100000
+        PIECE_VALUE = 100
+        PIECE_ALMOST_WIN_VALUE = 1000
+        ADVANCE_VALUE = 20
+        CENTRAL_VALUE = 15
+        PROTECTION_VALUE = 25
+        MOBILITY_VALUE = 10
+        PAIR_VALUE = 30
+        COLUMN_CONTROL_VALUE = 40
+        DEFENSE_VALUE = 20
+        ATTACK_VALUE = 35
+
+        # Check for immediate wins
+        for col in range(BOARD_SIZE):
+            if self.board[0][col] == "W":
+                return WIN_VALUE
+            if self.board[BOARD_SIZE-1][col] == "B":
+                return -WIN_VALUE
+
+        # Evaluate each piece
+        for row in range(BOARD_SIZE):
+            for col in range(BOARD_SIZE):
+                piece = self.board[row][col]
+                if piece is None:
+                    continue
+
+                # Basic piece value and counting
+                if piece == "W":
+                    white_pawns += 1
+                    # Advancement (closer to promotion is better)
+                    advance_score = (BOARD_SIZE - 1 - row) * ADVANCE_VALUE
+                    white_advanced += advance_score
+                    
+                    # Central control (controlling center is better)
+                    if 2 <= col <= BOARD_SIZE-3:
+                        white_central += CENTRAL_VALUE
+                else:
+                    black_pawns += 1
+                    # Advancement (closer to promotion is better)
+                    advance_score = row * ADVANCE_VALUE
+                    black_advanced += advance_score
+                    
+                    # Central control
+                    if 2 <= col <= BOARD_SIZE-3:
+                        black_central += CENTRAL_VALUE
+
+                # Mobility and protection
+                valid_moves = get_valid_moves(self.board, row, col)
+                if piece == "W":
+                    white_mobility += len(valid_moves) * MOBILITY_VALUE
+                else:
+                    black_mobility += len(valid_moves) * MOBILITY_VALUE
+
+                # Protection (pawns defended by other pawns)
+                protection = 0
+                direction = -1 if piece == "W" else 1
+                protected_row = row - direction
+                if 0 <= protected_row < BOARD_SIZE:
+                    for dc in [-1, 1]:
+                        protected_col = col + dc
+                        if 0 <= protected_col < BOARD_SIZE:
+                            if self.board[protected_row][protected_col] == piece:
+                                protection += PROTECTION_VALUE
+                                if piece == "W":
+                                    white_protected += PROTECTION_VALUE
+                                else:
+                                    black_protected += PROTECTION_VALUE
+
+                # Attack potential (pawns that can capture)
+                for move in valid_moves:
+                    target_piece = self.board[move[0]][move[1]]
+                    if target_piece is not None and target_piece != piece:
+                        if piece == "W":
+                            score += ATTACK_VALUE
+                        else:
+                            score -= ATTACK_VALUE
+
+        # Pawn structure evaluation
+        for col in range(BOARD_SIZE):
+            # Column control (having pawns in each column is good)
+            white_in_column = any(self.board[row][col] == "W" for row in range(BOARD_SIZE))
+            black_in_column = any(self.board[row][col] == "B" for row in range(BOARD_SIZE))
+            
+            if white_in_column:
+                score += COLUMN_CONTROL_VALUE
+            if black_in_column:
+                score -= COLUMN_CONTROL_VALUE
+
+            # Pawn pairs (side-by-side pawns are stronger)
+            for row in range(BOARD_SIZE):
+                if self.board[row][col] == "W" and col > 0 and self.board[row][col-1] == "W":
+                    score += PAIR_VALUE
+                if self.board[row][col] == "B" and col > 0 and self.board[row][col-1] == "B":
+                    score -= PAIR_VALUE
+
+        # Pawns almost promoting
+        for col in range(BOARD_SIZE):
+            if self.board[1][col] == "W":
+                score += PIECE_ALMOST_WIN_VALUE * 0.8
+            if self.board[BOARD_SIZE-2][col] == "B":
+                score -= PIECE_ALMOST_WIN_VALUE * 0.8
+
+        # Combine all factors
+        score += (white_pawns - black_pawns) * PIECE_VALUE
+        score += white_advanced - black_advanced
+        score += white_protected - black_protected
+        score += white_mobility - black_mobility
+        score += white_central - black_central
+
+        # Encourage keeping some defensive pieces
+        if white_pawns > black_pawns and black_pawns < 4:
+            score += DEFENSE_VALUE * (4 - black_pawns)
+        elif black_pawns > white_pawns and white_pawns < 4:
+            score -= DEFENSE_VALUE * (4 - white_pawns)
+
+        return score
 
 
     def is_terminal(self) -> bool:
@@ -363,7 +495,7 @@ class BreakthroughMinMaxSearcher:
         return value
 
 # ----- boucle de jeu -----
-def main():
+def main(mode="AI", difficulty="medium"):
     pygame.init()
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
     pygame.display.set_caption("Breakthrough avec Minimax")
@@ -395,7 +527,7 @@ def main():
 
     font = pygame.font.SysFont(None, 48)
 
-    searcher = BreakthroughMinMaxSearcher(max_depth=3)
+    searcher = BreakthroughMinMaxSearcher(max_depth={"easy": 1, "medium": 2, "hard": 4}[difficulty])
 
     while True:
         for event in pygame.event.get():
@@ -421,12 +553,21 @@ def main():
                             explosions.append(Explosion(explosion_x, explosion_y, use_alternative=False))
                         board[row][col] = board[src_row][src_col]
                         board[src_row][src_col] = None
-                        current_player = "B"
+                        current_player = "B" if current_player == "W" else "W"
                         selected = None
                         valid_moves = []
                         winner = check_win(board)
                         if winner is not None or not has_moves(board, current_player):
                             game_over = True
+
+                        # Update the display immediately after the player's move
+                        draw_board(screen, board, selected, valid_moves, white_pawn_img, black_pawn_img)
+                        for explosion in explosions[:]:
+                            explosion.update()
+                            explosion.draw(screen)
+                            if explosion.current_frame > explosion.duration:
+                                explosions.remove(explosion)
+                        pygame.display.flip()
                     else:
                         if board[row][col] == current_player:
                             selected = (row, col)
@@ -435,8 +576,8 @@ def main():
                             selected = None
                             valid_moves = []
 
-        if current_player == "B" and not game_over:
-            pygame.time.wait(500)
+        if mode == "AI" and current_player == "B" and not game_over:
+            pygame.time.wait(random.randint(1000, 3000))
             state = BreakthroughState(board, current_player)
             best_action = searcher.find_best_action(state)
             if best_action:
