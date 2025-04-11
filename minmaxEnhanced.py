@@ -480,18 +480,20 @@ def main(mode="AI", difficulty="medium"):
         if mode == "AI" and current_player == "B" and not game_over:
 
 
-            pygame.time.wait(random.randint(1000, 2000))
+            pygame.time.wait(random.randint(1000, 1500))
             state = BreakthroughState(board, current_player)
             best_action = searcher.find_best_action(state)
             if best_action:
                 if board[best_action.dst_row][best_action.dst_col] is not None:
                     explosion_x = best_action.dst_col * SQUARE_SIZE + SQUARE_SIZE // 2
                     explosion_y = best_action.dst_row * SQUARE_SIZE + SQUARE_SIZE // 2
+
                     explosions.append(Explosion(explosion_x, explosion_y, use_alternative=True))
                 board[best_action.dst_row][best_action.dst_col] = board[best_action.src_row][best_action.src_col]
                 board[best_action.src_row][best_action.src_col] = None
                 current_player = "W"
                 winner = check_win(board)
+
                 if winner is not None or not has_moves(board, current_player):
                     game_over = True
             else:
@@ -514,17 +516,21 @@ def main(mode="AI", difficulty="medium"):
                     if board[row][col] is not None:
                         explosion_x = col * SQUARE_SIZE + SQUARE_SIZE // 2
                         explosion_y = row * SQUARE_SIZE + SQUARE_SIZE // 2
+
                         explosions.append(Explosion(explosion_x, explosion_y, use_alternative=True))
                     board[row][col] = board[src_row][src_col]
                     board[src_row][src_col] = None
                     current_player = "B" if current_player == "W" else "W"
                     selected = None
                     valid_moves = []
+
+        
                     winner = check_win(board)
                     if winner is not None or not has_moves(board, current_player):
                         game_over = True
 
                     while explosions:
+
                         draw_board(screen, board, selected, valid_moves, white_pawn_img, black_pawn_img)
                         for explosion in explosions[:]:
                             explosion.update()
@@ -558,6 +564,7 @@ def main(mode="AI", difficulty="medium"):
                     for row in range(BOARD_SIZE):
                         for col in range(BOARD_SIZE):
                             if board[row][col] == "W":
+
                                 cascade_list.append((row, col))
                     cascade_explosion_alternative = True
                 cascade_started = True
@@ -579,6 +586,8 @@ def main(mode="AI", difficulty="medium"):
             explosion.draw(screen)
             if explosion.current_frame > explosion.duration:
                 explosions.remove(explosion)
+
+
 
         if game_over and not cascade_list:
             msg = f"{winner} gagne!" if winner is not None else "Match nul!"
